@@ -11,7 +11,6 @@ import javax.persistence.Id;
 import javax.persistence.JoinColumn;
 import javax.persistence.JoinTable;
 import javax.persistence.ManyToMany;
-import javax.persistence.OneToOne;
 
 @Entity
 public class User {
@@ -39,17 +38,6 @@ public class User {
 		this.userRole = userRole;
 	}
 	
-//	@OneToOne(mappedBy = "user")
-//    private Account account;
-//	
-//	public Account getAccount() {
-//		return account;
-//	}
-//
-//	public void setAccount(Account account) {
-//		this.account = account;
-//	}
-
 	public Integer getId() {
 		return id;
 	}

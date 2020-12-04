@@ -1,4 +1,4 @@
-package io.omnirio.moviecatalogservice;
+package io.omnirio.accountmicroservice;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;

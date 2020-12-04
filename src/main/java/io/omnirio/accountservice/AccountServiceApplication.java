@@ -3,6 +3,7 @@ package io.omnirio.accountservice;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.cloud.client.loadbalancer.LoadBalancerClient;
 import org.springframework.cloud.client.loadbalancer.reactive.LoadBalancerExchangeFilterFunction;
 import org.springframework.cloud.netflix.eureka.EnableEurekaClient;
@@ -29,13 +30,8 @@ public class AccountServiceApplication {
 		SpringApplication.run(AccountServiceApplication.class, args);
 	}
 
-//	@LoadBalanced
-//	@Bean
-//	public WebClient getCustomerServiceWebClient() {
-//		return WebClient.create("http://customer-microservice/");
-//	}
-
 	@Bean
+	@LoadBalanced
 	WebClient webClient(LoadBalancerClient lbClient) {
 		return WebClient.builder().filter(new LoadBalancerExchangeFilterFunction(lbClient)).build();
 	}
