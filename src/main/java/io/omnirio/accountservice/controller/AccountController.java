@@ -52,6 +52,11 @@ public class AccountController {
 	@Autowired
 	private MyUserDetailsService userDetailsService;
 	
+	@GetMapping("/")
+	public String getWelcomeMessage() {
+		return "Account Microservice";
+	}
+	
 	@PostMapping("/authenticate")
 	public ResponseEntity<?> createAuthenticationToken(@RequestBody AuthenticationRequest authenticationRequest) throws Exception {
 		try {
