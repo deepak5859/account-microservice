@@ -1,6 +1,8 @@
 package io.omnirio.accountservice.controller;
 
 import java.text.SimpleDateFormat;
+import java.util.Collections;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -31,7 +33,9 @@ import io.omnirio.accountservice.models.AuthenticationResponse;
 import io.omnirio.accountservice.models.Role;
 import io.omnirio.accountservice.models.User;
 import io.omnirio.accountservice.repository.AccountRepository;
+import io.omnirio.accountservice.repository.UserRepository;
 import io.omnirio.accountservice.service.MyUserDetailsService;
+import io.omnirio.accountservice.util.DateUtil;
 import io.omnirio.accountservice.util.JwtUtil;
 import reactor.core.publisher.Mono;
 
@@ -40,6 +44,9 @@ public class AccountController {
 	@Autowired
 	private AccountRepository accountRepository;
 
+	@Autowired
+	private UserRepository userRepository;
+	
     @Autowired
     WebClient webClient;
     
@@ -57,6 +64,8 @@ public class AccountController {
 		return "Account Microservice";
 	}
 	
+	private UserDetails userDetails = null;
+	
 	@PostMapping("/authenticate")
 	public ResponseEntity<?> createAuthenticationToken(@RequestBody AuthenticationRequest authenticationRequest) throws Exception {
 		try {
@@ -67,7 +76,7 @@ public class AccountController {
 			throw new Exception("Incorrect username or password", e);
 		}
 
-		final UserDetails userDetails = userDetailsService.loadUserByUsername(authenticationRequest.getUsername());
+		this.userDetails = userDetailsService.loadUserByUsername(authenticationRequest.getUsername());
 		final String jwt = jwtTokenUtil.generateToken(userDetails);
 
 		return ResponseEntity.ok(new AuthenticationResponse(jwt));
@@ -75,79 +84,89 @@ public class AccountController {
 
     @GetMapping("/account")
 	List<Account> getAllAccounts() {
-		return accountRepository.findAll();
+    	String userName = userDetails.getUsername();
+    	
+    	User user = userRepository.findByName(userName);
+    	for(Role role : user.getUserRole()) {
+    		if(role.getCode().equalsIgnoreCase("MGR")) {
+    			return accountRepository.findAll();
+    		}
+    	}
+    	
+    	return Collections.singletonList(accountRepository.findByUser_id(user.getId()));
 	}
     
     @PostMapping("/account")
     @Transactional
-	public void addAccount(@RequestBody String accountData) throws ParseException, java.text.ParseException {
-    	SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
-    	JSONObject accJsonObject = (JSONObject) new JSONParser().parse(accountData);
+	public String addAccount(@RequestBody String accountData) throws ParseException, java.text.ParseException {
+    	try {
+    		SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+        	JSONObject accJsonObject = (JSONObject) new JSONParser().parse(accountData);
+        	Date birthDate = null;
+        	
+        	if(accJsonObject != null && !accJsonObject.isEmpty()) {
+        		User createdUser = null;
+        		
+        		if(accJsonObject.containsKey("user")) {
+        			JSONObject userJsobObj = (JSONObject) accJsonObject.get("user");
+        			birthDate = dateFormat.parse(userJsobObj.get("birthDate").toString());
+        			
+        			User user = new User();
+        			user.setName(userJsobObj.get("name").toString());
+        			user.setPhone(userJsobObj.get("phone").toString());
+        			user.setGender(userJsobObj.get("gender").toString());
+        			user.setBirthDate(birthDate);
+        			
+        			Set<Role> roles = new HashSet<>();
+        			
+        			if(userJsobObj.containsKey("userRole")) {
+        				JSONArray jsonArrayRoles = (JSONArray) userJsobObj.get("userRole");
+        				
+        				for(int i = 0; i < jsonArrayRoles.size(); i++) {
+        					JSONObject roleJson = (JSONObject) jsonArrayRoles.get(i);
+        					
+        					Role role = new Role();
+        					role.setId(((Long)roleJson.get("id")).intValue());
+        					role.setName(roleJson.get("name").toString());
+        					role.setCode(roleJson.get("code").toString());
+        					
+        					roles.add(role);
+        				}
+        			}
+        			
+        			user.setUserRole(roles);
+        			
+        			Mono<User> createdUserMono = webClient.post()
+        			        .uri("http://customer-microservice/customer/")
+        			        .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+        			        .body(Mono.just(user), User.class)
+        			        .retrieve()
+        			        .bodyToMono(User.class);
+        			
+        			createdUser = createdUserMono.block();
+        			
+        			System.out.println(createdUser.toString());
+        		}
+        		
+        		Account newAccount = new Account();
+        		newAccount.setName(accJsonObject.get("name").toString());
+        		newAccount.setType(accJsonObject.get("type").toString());
+        		newAccount.setOpenDate(dateFormat.parse(accJsonObject.get("openDate").toString()));
+        		newAccount.setBranch(accJsonObject.get("branch").toString());
+        		newAccount.setMinor(DateUtil.isMinor(birthDate));
+        		
+        		if(createdUser != null) {
+        			newAccount.setUser(createdUser);
+        		}
+        		
+        		accountRepository.save(newAccount);
+        		
+        		return "User Account created successfully!!!";
+        	}	
+    	} catch (Exception e) {
+    		e.printStackTrace();
+		}
     	
-    	if(accJsonObject != null && !accJsonObject.isEmpty()) {
-    		User createdUser = null;
-    		
-    		if(accJsonObject.containsKey("user")) {
-    			JSONObject userJsobObj = (JSONObject) accJsonObject.get("user");
-    			
-    			User user = new User();
-    			user.setName(userJsobObj.get("name").toString());
-    			user.setPhone(userJsobObj.get("phone").toString());
-    			user.setGender(userJsobObj.get("gender").toString());
-    			user.setBirthDate(dateFormat.parse(userJsobObj.get("birthDate").toString())); // Date.parse(userJsobObj.get("birthDate").toString()));
-    			
-    			Set<Role> roles = new HashSet<>();
-    			
-    			if(userJsobObj.containsKey("userRole")) {
-    				JSONArray jsonArrayRoles = (JSONArray) userJsobObj.get("userRole");
-    				
-    				for(int i = 0; i < jsonArrayRoles.size(); i++) {
-    					JSONObject roleJson = (JSONObject) jsonArrayRoles.get(i);
-    					
-    					Role role = new Role();
-    					role.setId(((Long)roleJson.get("id")).intValue());
-    					role.setName(roleJson.get("name").toString());
-    					role.setCode(roleJson.get("code").toString());
-    					
-    					roles.add(role);
-    				}
-    			}
-    			
-    			user.setUserRole(roles);
-    			
-    			Mono<User> createdUserMono = webClient.post()
-    			        .uri("http://customer-microservice/customer/")
-    			        .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-    			        .body(Mono.just(user), User.class)
-    			        .retrieve()
-    			        .bodyToMono(User.class);
-    			
-    			createdUser = createdUserMono.block();
-    			
-    			System.out.println(createdUser.toString());
-    		}
-    		
-    		Account newAccount = new Account();
-    		newAccount.setName(accJsonObject.get("name").toString());
-    		newAccount.setType(accJsonObject.get("type").toString());
-    		newAccount.setOpenDate(dateFormat.parse(accJsonObject.get("openDate").toString()));
-    		newAccount.setBranch(accJsonObject.get("branch").toString());
-    		newAccount.setMinor(Boolean.valueOf(accJsonObject.get("isMinor").toString()));
-    		
-    		if(createdUser != null) {
-    			newAccount.setUser(createdUser);
-    		}
-    		
-    		accountRepository.save(newAccount);
-    		
-    		System.out.println("User Account created successfully!!!");
-    	}
-    	
+    	return "Unable to Create User Account";
 	}
 }
-
-/*
-Alternative WebClient way
-Movie movie = webClientBuilder.build().get().uri("http://localhost:8082/movies/"+ rating.getMovieId())
-.retrieve().bodyToMono(Movie.class).block();
-*/
